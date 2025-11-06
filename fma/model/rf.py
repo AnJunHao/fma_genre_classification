@@ -47,7 +47,6 @@ def rf_train_eval(
         min_samples_leaf=min_samples_leaf,
         class_weight=None if oversampler is not None else "balanced",
         random_state=random_state,
-        n_jobs=-1,
     )
 
     with console.status("Training model...", disable=not verbose):
