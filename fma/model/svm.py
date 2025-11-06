@@ -6,17 +6,19 @@ from typing import Any, Literal, TypedDict, cast
 import pandas as pd
 from imblearn.over_sampling import SMOTE
 from imblearn.over_sampling.base import BaseOverSampler
-from imblearn.pipeline import Pipeline
-from sklearn.metrics import (
-    f1_score,
-    precision_recall_fscore_support,
-    precision_score,
-    recall_score,
-)
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import SVC
 
 from fma.data import FMADataset, PathLike
+from fma.model.utils import (
+    BestModelResults,
+    build_ovr_with_optional_oversampling,
+    ensure_iterable_option,
+    evaluation_dataframe_from_dataset,
+    extract_global_metrics,
+    init_best_model_results,
+    maybe_update_best,
+)
 from fma.plain import console, with_status
 from fma.types import DataFrame
 
@@ -38,88 +40,28 @@ def svm_train_eval(
     X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test_multi(
         genre_set, test_size=test_size, random_state=random_state, verbose=verbose
     )
-    if oversampler is not None:
-        base = Pipeline(
-            [
-                ("smote", oversampler(random_state=random_state)),  # type: ignore
-                (
-                    "clf",
-                    SVC(
-                        kernel=kernel,
-                        C=C,
-                        class_weight=None,
-                        probability=False,
-                        random_state=random_state,
-                    ),
-                ),
-            ]
-        )
-    else:
-        base = SVC(
-            kernel=kernel,
-            C=C,
-            class_weight="balanced",
-            probability=False,
-            random_state=random_state,
-        )
+
+    base_clf = SVC(
+        kernel=kernel,
+        C=C,
+        class_weight=None if oversampler is not None else "balanced",
+        probability=False,
+        random_state=random_state,
+    )
+
     with console.status("Training model...", disable=not verbose):
-        clf = OneVsRestClassifier(base, n_jobs=-1).fit(X_train, Y_train)
+        clf = build_ovr_with_optional_oversampling(
+            base_estimator=base_clf,
+            oversampler_cls=oversampler,
+            random_state=random_state,
+        ).fit(X_train, Y_train)
     with console.status("Evaluating model...", disable=not verbose):
         Y_pred = clf.predict(X_test)
-        prec, rec, f1, support = precision_recall_fscore_support(
-            Y_test,
-            Y_pred,
-            average=None,
-            zero_division=0,  # type: ignore
-        )
-        df = pd.DataFrame(
-            {
-                "genre": [dataset.id_to_genre[c].title for c in Y_test.columns],
-                "precision": prec,
-                "recall": rec,
-                "f1": f1,
-                "support": support,
-            },
-            index=Y_test.columns,
-        )
 
-        total_support = support.sum()  # type: ignore
-        for index, avg_type in enumerate(["MACRO", "MICRO", "WEIGHTED"], start=-3):
-            prec_global = precision_score(
-                Y_test,
-                Y_pred,
-                average=avg_type.lower(),
-                zero_division=0,  # type: ignore
-            )
-            rec_global = recall_score(
-                Y_test,
-                Y_pred,
-                average=avg_type.lower(),
-                zero_division=0,  # type: ignore
-            )
-            f1_global = f1_score(
-                Y_test,
-                Y_pred,
-                average=avg_type.lower(),
-                zero_division=0,  # type: ignore
-            )
-            df.loc[index] = [
-                avg_type,
-                prec_global,
-                rec_global,
-                f1_global,
-                total_support,
-            ]
+        df = evaluation_dataframe_from_dataset(dataset, Y_test, Y_pred)  # type: ignore
 
     df = cast(DataFrame[int, int, float | str], df)
     return clf, df
-
-
-class GlobalMetrics(TypedDict):
-    precision: float
-    recall: float
-    f1: float
-    support: int
 
 
 class ModelParams(TypedDict):
@@ -127,20 +69,6 @@ class ModelParams(TypedDict):
     oversampler_name: str
     kernel: KernelType
     C: float
-
-
-class ModelResult(TypedDict):
-    score: float
-    params: ModelParams
-    metrics: GlobalMetrics
-    estimator: OneVsRestClassifier
-    results: DataFrame[int, int, float | str]
-
-
-class BestModelResults(TypedDict):
-    micro: ModelResult
-    macro: ModelResult
-    weighted: ModelResult
 
 
 @with_status(transient=False)
@@ -155,60 +83,21 @@ def svm_grid_search(
     save_file: PathLike | None = None,
     *,
     verbose: bool = True,
-) -> tuple[DataFrame[str, int, str | int | float], BestModelResults]:
-    def _ensure_iterable_option(value: Any) -> list[Any]:
-        if isinstance(value, Iterable) and not isinstance(value, (str, bytes)):
-            return list(value)
-        return [value]
-
-    def _extract_global_metrics(df: pd.DataFrame, label: str) -> dict[str, float | int]:
-        row = df.loc[df["genre"] == label]
-        if row.empty:
-            raise ValueError(
-                f"Aggregated metrics for {label} were not found in the evaluation DataFrame."
-            )
-        row = row.iloc[0]
-        return {
-            "precision": float(row["precision"]),
-            "recall": float(row["recall"]),
-            "f1": float(row["f1"]),
-            "support": int(row["support"]),
-        }
-
-    oversampler_options = _ensure_iterable_option(oversampler)
-    kernel_options = _ensure_iterable_option(kernel)
-    c_options = _ensure_iterable_option(C)
+) -> tuple[DataFrame[str, int, str | int | float], BestModelResults[ModelParams]]:
+    oversampler_options = ensure_iterable_option(oversampler)
+    kernel_options = ensure_iterable_option(kernel)
+    c_options = ensure_iterable_option(C)
 
     param_grid = list(product(oversampler_options, kernel_options, c_options))
+
     if not param_grid:
         raise ValueError(
             "No hyperparameter configurations were provided for the grid search."
         )
 
     results_records: list[dict[str, Any]] = []
-    best_by_metric: BestModelResults = {
-        "macro": {
-            "score": float("-inf"),
-            "params": None,  # type: ignore
-            "metrics": None,  # type: ignore
-            "estimator": None,  # type: ignore
-            "results": None,  # type: ignore
-        },
-        "micro": {
-            "score": float("-inf"),
-            "params": None,  # type: ignore
-            "metrics": None,  # type: ignore
-            "estimator": None,  # type: ignore
-            "results": None,  # type: ignore
-        },
-        "weighted": {
-            "score": float("-inf"),
-            "params": None,  # type: ignore
-            "metrics": None,  # type: ignore
-            "estimator": None,  # type: ignore
-            "results": None,  # type: ignore
-        },
-    }
+
+    best_by_metric: BestModelResults = init_best_model_results()
 
     for oversampler_cls, kernel_, C_ in console.track(
         param_grid,
@@ -231,13 +120,14 @@ def svm_grid_search(
                 C=float(C_),
                 verbose=False,
             )
+
             status.update(
                 f"Evaluating with (oversampler={oversampler_label}, kernel={kernel_}, C={C_})"
             )
 
-            macro_metrics = _extract_global_metrics(df_scores, "MACRO")
-            micro_metrics = _extract_global_metrics(df_scores, "MICRO")
-            weighted_metrics = _extract_global_metrics(df_scores, "WEIGHTED")
+            macro_metrics = extract_global_metrics(df_scores, "MACRO")
+            micro_metrics = extract_global_metrics(df_scores, "MICRO")
+            weighted_metrics = extract_global_metrics(df_scores, "WEIGHTED")
 
             record: dict[str, Any] = {
                 "oversampler": oversampler_label,
@@ -245,7 +135,10 @@ def svm_grid_search(
                 "C": float(C_),
                 "support_total": macro_metrics["support"],
             }
-            for metric_name, metrics in (
+
+            metric_name: Literal["macro", "micro", "weighted"]
+
+            for metric_name, metrics in (  # type: ignore
                 ("macro", macro_metrics),
                 ("micro", micro_metrics),
                 ("weighted", weighted_metrics),
@@ -253,6 +146,7 @@ def svm_grid_search(
                 record[f"precision_{metric_name}"] = metrics["precision"]
                 record[f"recall_{metric_name}"] = metrics["recall"]
                 record[f"f1_{metric_name}"] = metrics["f1"]
+
             results_records.append(record)
 
             params = {
@@ -261,21 +155,24 @@ def svm_grid_search(
                 "kernel": kernel_,
                 "C": float(C_),
             }
-            for metric_name, metrics in (
+
+            for metric_name, metrics in (  # type: ignore
                 ("macro", macro_metrics),
                 ("micro", micro_metrics),
                 ("weighted", weighted_metrics),
             ):
-                if metrics["f1"] > best_by_metric[metric_name]["score"]:
-                    best_by_metric[metric_name] = {
-                        "score": metrics["f1"],
-                        "params": params.copy(),
-                        "metrics": metrics.copy(),
-                        "estimator": clf,
-                        "results": df_scores.copy(),
-                    }
+                maybe_update_best(
+                    best_by_metric,
+                    metric_name,
+                    metrics["f1"],
+                    params,
+                    clf,
+                    df_scores,
+                    metrics,
+                )
 
     results_df = pd.DataFrame(results_records)
+
     ordered_columns = [
         "oversampler",
         "kernel",
@@ -291,16 +188,20 @@ def svm_grid_search(
         "f1_weighted",
         "support_total",
     ]
+
     results_df = (
         results_df[ordered_columns]
         .sort_values(by=["f1_macro", "f1_micro", "f1_weighted"], ascending=False)
         .reset_index(drop=True)
     )
+
     results_df = cast(DataFrame[str, int, str | int | float], results_df)
 
     if save_file is not None:
         save_file = Path(save_file).absolute()
+
         results_df.to_csv(save_file, index=False)
+
         if verbose:
             console.done(f"Saved hyperparameter grid search results to {save_file}")
 
