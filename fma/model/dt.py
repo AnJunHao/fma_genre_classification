@@ -22,7 +22,7 @@ from fma.model.utils import (
 from fma.plain import console, with_status
 from fma.types import DataFrame
 
-type MaxFeaturesType = int | float | Literal["auto", "sqrt", "log2"]
+type MaxFeaturesType = int | float | Literal["auto", "sqrt", "log2"] | None
 
 
 @with_status(transient=False)
@@ -36,6 +36,7 @@ def dt_train_eval(
     min_samples_leaf: int = 1,
     max_features: MaxFeaturesType | None = None,
     *,
+    n_jobs: int = -1,
     verbose: bool = True,
 ) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
     X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test_multi(
@@ -56,6 +57,7 @@ def dt_train_eval(
             base_estimator=base_clf,
             oversampler_cls=oversampler,
             random_state=random_state,
+            n_jobs=n_jobs,
         ).fit(X_train, Y_train)
 
     with console.status("Evaluating model...", disable=not verbose):
@@ -85,6 +87,7 @@ def dt_grid_search(
     test_size: float = 0.2,
     save_file: PathLike | None = None,
     *,
+    n_jobs: int = -1,
     verbose: bool = True,
 ) -> tuple[DataFrame[str, int, str | int | float], BestModelResults[ModelParams]]:
     oversampler_options = ensure_iterable_option(oversampler)
@@ -135,6 +138,7 @@ def dt_grid_search(
                 max_depth=max_depth_,
                 min_samples_leaf=min_samples_leaf_,
                 max_features=max_features_,
+                n_jobs=n_jobs,
                 verbose=False,
             )
 

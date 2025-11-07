@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from typing import Any, Literal, TypedDict, cast
 
 import pandas as pd
@@ -186,34 +186,3 @@ def build_ovr_with_optional_oversampling(
     else:
         base = base_estimator
     return OneVsRestClassifier(base, n_jobs=n_jobs)
-
-
-def generic_train_eval_ovr(
-    dataset: FMADataset,
-    *,
-    build_estimator: Callable[[], BaseEstimator],
-    oversampler: type[BaseOverSampler] | None,
-    genre_set: Literal["all", "root", "non-root"] | Iterable[int] = "all",
-    random_state: int = 42,
-    test_size: float = 0.2,
-    verbose: bool = True,
-) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
-    """End-to-end helper:
-    - Prepare train/test split
-    - Build base estimator (via build_estimator)
-    - Wrap with optional oversampling and OneVsRest
-    - Fit, predict and produce the evaluation DataFrame
-    """
-    X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test_multi(
-        genre_set, test_size=test_size, random_state=random_state, verbose=verbose
-    )
-
-    clf = build_ovr_with_optional_oversampling(
-        base_estimator=build_estimator(),
-        oversampler_cls=oversampler,
-        random_state=random_state,
-    ).fit(X_train, Y_train)
-
-    Y_pred = clf.predict(X_test)
-    df_scores = evaluation_dataframe_from_dataset(dataset, Y_test, Y_pred)  # type: ignore
-    return clf, df_scores

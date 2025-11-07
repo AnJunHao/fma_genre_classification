@@ -34,6 +34,7 @@ def rf_train_eval(
     min_samples_leaf: int = 1,
     n_estimators: int = 100,
     *,
+    n_jobs: int = -1,
     verbose: bool = True,
 ) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
     X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test_multi(
@@ -54,6 +55,7 @@ def rf_train_eval(
             base_estimator=base_clf,
             oversampler_cls=oversampler,
             random_state=random_state,
+            n_jobs=n_jobs,
         ).fit(X_train, Y_train)
 
     with console.status("Evaluating model...", disable=not verbose):
@@ -83,6 +85,7 @@ def rf_grid_search(
     test_size: float = 0.2,
     save_file: PathLike | None = None,
     *,
+    n_jobs: int = -1,
     verbose: bool = True,
 ) -> tuple[DataFrame[str, int, str | int | float], BestModelResults[ModelParams]]:
     oversampler_options = ensure_iterable_option(oversampler)
@@ -137,6 +140,7 @@ def rf_grid_search(
                 max_depth=max_depth_,
                 min_samples_leaf=min_samples_leaf_,
                 n_estimators=n_estimators_,
+                n_jobs=n_jobs,
                 verbose=False,
             )
 

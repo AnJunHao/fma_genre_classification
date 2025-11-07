@@ -33,6 +33,7 @@ def lr_train_eval(
     penalty: Literal["l1", "l2"] = "l2",
     C: float = 1.0,
     *,
+    n_jobs: int = -1,
     verbose: bool = True,
 ) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
     X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test_multi(
@@ -54,6 +55,7 @@ def lr_train_eval(
             base_estimator=base_clf,
             oversampler_cls=oversampler,
             random_state=random_state,
+            n_jobs=n_jobs,
         ).fit(X_train, Y_train)
 
     with console.status("Evaluating model...", disable=not verbose):
@@ -81,6 +83,7 @@ def lr_grid_search(
     test_size: float = 0.2,
     save_file: PathLike | None = None,
     *,
+    n_jobs: int = -1,
     verbose: bool = True,
 ) -> tuple[DataFrame[str, int, str | int | float], BestModelResults[ModelParams]]:
     oversampler_options = ensure_iterable_option(oversampler)
@@ -117,6 +120,7 @@ def lr_grid_search(
                 oversampler=oversampler_cls,
                 penalty=penalty_,
                 C=float(C_),
+                n_jobs=n_jobs,
                 verbose=False,
             )
 
