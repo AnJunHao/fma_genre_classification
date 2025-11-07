@@ -8,6 +8,7 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import FancyBboxPatch
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 from fma.data import FMADataset
 from fma.plain import console, with_status
@@ -975,6 +976,7 @@ def plot_pca(
     variance_thresholds: list[float] | None = None,
     show_loadings: bool = True,
     n_top_features: int = 5,
+    standardize: bool = True,
     verbose: bool = True,
 ) -> None:
     """
@@ -989,6 +991,7 @@ def plot_pca(
                            (default: [0.80, 0.90, 0.95, 0.99])
         show_loadings: Whether to print top contributing features for components
         n_top_features: Number of top features to show per component (default: 5)
+        standardize: Whether to standardize features (mean=0, std=1) before PCA (default: True)
         verbose: Whether to print messages
     """
     if variance_thresholds is None:
@@ -997,13 +1000,21 @@ def plot_pca(
     # Get features from dataset
     X = dataset.features.values
 
+    # Standardize features if requested
+    if standardize:
+        if verbose:
+            console.log("Standardizing features (mean=0, std=1)...")
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+
     # Determine number of components
     n_components = min(X.shape) if max_components is None else max_components
     n_components = min(n_components, min(X.shape))
 
     # Fit PCA
     if verbose:
-        console.log(f"Fitting PCA with {n_components} components...")
+        standardize_msg = " on standardized features" if standardize else ""
+        console.log(f"Fitting PCA with {n_components} components{standardize_msg}...")
 
     pca = PCA(n_components=n_components)
     pca.fit(X)

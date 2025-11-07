@@ -36,7 +36,7 @@ def lr_train_eval(
     n_jobs: int = -1,
     verbose: bool = True,
 ) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
-    X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test_multi(
+    X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test(
         genre_set, test_size=test_size, random_state=random_state, verbose=verbose
     )
 

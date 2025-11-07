@@ -255,28 +255,8 @@ class FMADataset:
     def get_binary_labels(self, genre_id: int) -> list[bool]:
         return [genre_id in g_list for g_list in self.track_genres]
 
-    @with_status
-    def prepare_train_test_single(
-        self,
-        genre_id: int,
-        test_size: float = 0.2,
-        random_state: int = 42,
-        *,
-        verbose: bool = True,
-    ) -> tuple[FeaturesDF, FeaturesDF, list[bool], list[bool], StandardScaler]:
-        assert genre_id in self.genre_ids, f"Genre ID {genre_id} not found"
-        X = self.features
-        y = self.get_binary_labels(genre_id)
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=random_state, stratify=y
-        )
-        scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_test = scaler.transform(X_test)
-        return X_train, X_test, y_train, y_test, scaler  # type: ignore
-
     @with_status(transient=False)
-    def prepare_train_test_multi(
+    def prepare_train_test(
         self,
         genre_set: Literal["all", "root", "non-root"] | Iterable[int] = "all",
         test_size: float = 0.2,
