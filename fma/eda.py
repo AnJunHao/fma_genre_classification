@@ -7,6 +7,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import FancyBboxPatch
+from sklearn.decomposition import PCA
 
 from fma.data import FMADataset
 from fma.plain import console, with_status
@@ -963,3 +964,183 @@ def describe_tracks(
     else:
         plt.show()
         plt.close()
+
+
+@with_status
+def plot_pca(
+    dataset: FMADataset,
+    save_file: PathLike | None = None,
+    *,
+    max_components: int | None = None,
+    variance_thresholds: list[float] | None = None,
+    verbose: bool = True,
+) -> None:
+    """
+    Visualize PCA explained variance to show how many dimensions are needed
+    to retain a certain amount of variance.
+
+    Args:
+        dataset: FMADataset containing feature information
+        save_file: Path to save the plot to
+        max_components: Maximum number of components to plot (default: all)
+        variance_thresholds: List of variance thresholds to mark on the plot
+                           (default: [0.80, 0.90, 0.95, 0.99])
+        verbose: Whether to print messages
+    """
+    if variance_thresholds is None:
+        variance_thresholds = [0.80, 0.90, 0.95, 0.99]
+
+    # Get features from dataset
+    X = dataset.features.values
+
+    # Determine number of components
+    n_components = min(X.shape) if max_components is None else max_components
+    n_components = min(n_components, min(X.shape))
+
+    # Fit PCA
+    if verbose:
+        console.log(f"Fitting PCA with {n_components} components...")
+
+    pca = PCA(n_components=n_components)
+    pca.fit(X)
+
+    # Get explained variance
+    explained_variance_ratio = pca.explained_variance_ratio_
+    cumulative_variance = np.cumsum(explained_variance_ratio)
+
+    # Set up the figure
+    sns.set_style("whitegrid")
+    sns.set_context("paper", font_scale=1.2)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    fig.suptitle(
+        "PCA Explained Variance Analysis",
+        fontsize=16,
+        fontweight="bold",
+        y=0.98,
+    )
+
+    # Plot 1: Cumulative explained variance
+    ax1.plot(
+        range(1, len(cumulative_variance) + 1),
+        cumulative_variance,
+        linewidth=2.5,
+        color="#2E86AB",
+        marker="o",
+        markersize=3,
+        markevery=max(1, len(cumulative_variance) // 20),
+    )
+
+    # Add variance threshold lines and annotations
+    colors_thresh = ["#F18F01", "#A23B72", "#06A77D", "#C73E1D"]
+    for i, threshold in enumerate(variance_thresholds):
+        if threshold <= cumulative_variance[-1]:
+            # Find the number of components needed
+            n_needed = np.argmax(cumulative_variance >= threshold) + 1
+
+            ax1.axhline(
+                y=threshold,
+                color=colors_thresh[i % len(colors_thresh)],
+                linestyle="--",
+                linewidth=1.5,
+                alpha=0.7,
+                label=f"{threshold * 100:.0f}% variance",
+            )
+            ax1.axvline(
+                x=n_needed,
+                color=colors_thresh[i % len(colors_thresh)],
+                linestyle="--",
+                linewidth=1.5,
+                alpha=0.7,
+            )
+
+            # Add annotation
+            ax1.annotate(
+                f"n={n_needed}",
+                xy=(n_needed, threshold),
+                xytext=(10, -10),
+                textcoords="offset points",
+                fontsize=9,
+                color=colors_thresh[i % len(colors_thresh)],
+                fontweight="bold",
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor="white",
+                    edgecolor=colors_thresh[i % len(colors_thresh)],
+                    alpha=0.8,
+                ),
+            )
+
+    ax1.set_xlabel("Number of Components", fontsize=11, fontweight="semibold")
+    ax1.set_ylabel("Cumulative Explained Variance", fontsize=11, fontweight="semibold")
+    ax1.set_title(
+        "(a) Cumulative Explained Variance",
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
+    )
+    ax1.grid(True, alpha=0.3)
+    ax1.legend(loc="lower right", fontsize=9)
+    ax1.set_ylim([0, 1.05])
+
+    # Plot 2: Individual explained variance (bar chart for first N components)
+    n_bars = min(50, n_components)
+    ax2.bar(
+        range(1, n_bars + 1),
+        explained_variance_ratio[:n_bars],
+        color="#A23B72",
+        edgecolor="white",
+        alpha=0.8,
+        linewidth=0.5,
+    )
+
+    ax2.set_xlabel("Component Number", fontsize=11, fontweight="semibold")
+    ax2.set_ylabel("Explained Variance Ratio", fontsize=11, fontweight="semibold")
+    ax2.set_title(
+        f"(b) Individual Explained Variance (First {n_bars} Components)",
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
+    )
+    ax2.grid(True, alpha=0.3, axis="y")
+
+    # Add summary statistics as text
+    summary_text = (
+        f"Total components: {n_components}\n"
+        f"Total features: {X.shape[1]}\n"
+        f"Samples: {X.shape[0]}"
+    )
+    ax2.text(
+        0.95,
+        0.95,
+        summary_text,
+        transform=ax2.transAxes,
+        fontsize=9,
+        verticalalignment="top",
+        horizontalalignment="right",
+        bbox=dict(boxstyle="round,pad=0.5", facecolor="white", alpha=0.8),
+    )
+
+    plt.tight_layout()
+
+    if save_file:
+        save_file = Path(save_file).absolute()
+        plt.savefig(save_file, dpi=300, bbox_inches="tight")
+        plt.close()
+        if verbose:
+            console.done(f"Saved PCA plot to {save_file}")
+    else:
+        plt.show()
+        plt.close()
+
+    # Print summary if verbose
+    if verbose:
+        console.log("\n[bold]PCA Summary:[/bold]")
+        for threshold in variance_thresholds:
+            if threshold <= cumulative_variance[-1]:
+                n_needed = np.argmax(cumulative_variance >= threshold) + 1
+                reduction = (1 - n_needed / X.shape[1]) * 100
+                console.log(
+                    f"  • {threshold * 100:.0f}% variance: {n_needed} components "
+                    f"({reduction:.1f}% reduction)"
+                )
