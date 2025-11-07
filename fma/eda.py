@@ -973,6 +973,8 @@ def plot_pca(
     *,
     max_components: int | None = None,
     variance_thresholds: list[float] | None = None,
+    show_loadings: bool = True,
+    n_top_features: int = 5,
     verbose: bool = True,
 ) -> None:
     """
@@ -985,6 +987,8 @@ def plot_pca(
         max_components: Maximum number of components to plot (default: all)
         variance_thresholds: List of variance thresholds to mark on the plot
                            (default: [0.80, 0.90, 0.95, 0.99])
+        show_loadings: Whether to print top contributing features for components
+        n_top_features: Number of top features to show per component (default: 5)
         verbose: Whether to print messages
     """
     if variance_thresholds is None:
@@ -1007,6 +1011,9 @@ def plot_pca(
     # Get explained variance
     explained_variance_ratio = pca.explained_variance_ratio_
     cumulative_variance = np.cumsum(explained_variance_ratio)
+
+    # Get feature names
+    feature_names = dataset.features.columns.tolist()
 
     # Set up the figure
     sns.set_style("whitegrid")
@@ -1133,3 +1140,33 @@ def plot_pca(
     else:
         plt.show()
         plt.close()
+
+    # Print feature loadings for top components
+    if show_loadings and verbose:
+        console.log("\n[bold]Top Contributing Features by Component:[/bold]")
+
+        # Get PCA component loadings (weights)
+        components = pca.components_
+
+        # Show top features for first few components (up to 10)
+        n_components_to_show = min(10, len(explained_variance_ratio))
+
+        for i in range(n_components_to_show):
+            # Get absolute loadings for this component
+            loadings = np.abs(components[i])
+
+            # Get indices of top features
+            top_indices = np.argsort(loadings)[-n_top_features:][::-1]
+
+            # Create feature contribution list
+            feature_contributions = []
+            for idx in top_indices:
+                feature_name = feature_names[idx]
+                loading = components[i][idx]
+                feature_contributions.append(f"{feature_name} ({loading:+.3f})")
+
+            variance_pct = explained_variance_ratio[i] * 100
+            console.log(
+                f"  [cyan]PC{i + 1}[/cyan] ({variance_pct:.2f}% var): "
+                + ", ".join(feature_contributions)
+            )
