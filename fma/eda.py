@@ -988,7 +988,7 @@ def plot_pca(
         verbose: Whether to print messages
     """
     if variance_thresholds is None:
-        variance_thresholds = [0.80, 0.90, 0.95, 0.99]
+        variance_thresholds = [0.80, 0.90, 0.95, 0.99, 0.999]
 
     # Get features from dataset
     X = dataset.features.values
@@ -1032,7 +1032,7 @@ def plot_pca(
     )
 
     # Add variance threshold lines and annotations
-    colors_thresh = ["#F18F01", "#A23B72", "#06A77D", "#C73E1D"]
+    colors_thresh = ["#F18F01", "#A23B72", "#06A77D", "#C73E1D", "#E63946"]
     for i, threshold in enumerate(variance_thresholds):
         if threshold <= cumulative_variance[-1]:
             # Find the number of components needed
