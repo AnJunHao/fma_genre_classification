@@ -736,6 +736,7 @@ def draw_genre_tree(
 
     if save_file:
         save_file = Path(save_file).absolute()
+        save_file.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_file)
         plt.close()
         if verbose:
@@ -958,6 +959,7 @@ def describe_tracks(
 
     if save_file:
         save_file = Path(save_file).absolute()
+        save_file.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_file)
         plt.close()
         if verbose:
@@ -998,19 +1000,12 @@ def plot_pca(
 
     # Standardize features if requested
     if standardize:
-        if verbose:
-            console.log("Standardizing features (mean=0, std=1)...")
         scaler = StandardScaler()
         X = scaler.fit_transform(X)
 
     # Determine number of components
     n_components = min(X.shape) if max_components is None else max_components
     n_components = min(n_components, min(X.shape))
-
-    # Fit PCA
-    if verbose:
-        standardize_msg = " on standardized features" if standardize else ""
-        console.log(f"Fitting PCA with {n_components} components{standardize_msg}...")
 
     pca = PCA(n_components=n_components)
     pca.fit(X)
@@ -1136,6 +1131,7 @@ def plot_pca(
 
     if save_file:
         save_file = Path(save_file).absolute()
+        save_file.parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_file, dpi=300, bbox_inches="tight")
         plt.close()
         if verbose:

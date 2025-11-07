@@ -34,6 +34,7 @@ def svm_train_eval(
     oversampler: type[BaseOverSampler] | None = SMOTE,
     kernel: KernelType = "rbf",
     C: float = 1.0,
+    gamma: float | Literal["scale", "auto"] = "scale",
     *,
     n_jobs: int = -1,
     verbose: bool = True,
@@ -45,6 +46,7 @@ def svm_train_eval(
     base_clf = SVC(
         kernel=kernel,
         C=C,
+        gamma=gamma,
         class_weight=None if oversampler is not None else "balanced",
         probability=False,
         random_state=random_state,
@@ -71,6 +73,7 @@ class ModelParams(TypedDict):
     oversampler_name: str
     kernel: KernelType
     C: float
+    gamma: float | Literal["scale", "auto"]
 
 
 @with_status(transient=False)
@@ -79,6 +82,9 @@ def svm_grid_search(
     oversampler: Iterable[type[BaseOverSampler] | None] | type[BaseOverSampler] | None,
     kernel: Iterable[KernelType] | KernelType,
     C: Iterable[float] | float,
+    gamma: Iterable[float | Literal["scale", "auto"]]
+    | float
+    | Literal["scale", "auto"],
     genre_set: Literal["all", "root", "non-root"] | Iterable[int] = "all",
     random_state: int = 42,
     test_size: float = 0.2,
@@ -90,8 +96,11 @@ def svm_grid_search(
     oversampler_options = ensure_iterable_option(oversampler)
     kernel_options = ensure_iterable_option(kernel)
     c_options = ensure_iterable_option(C)
+    gamma_options = ensure_iterable_option(gamma)
 
-    param_grid = list(product(oversampler_options, kernel_options, c_options))
+    param_grid = list(
+        product(oversampler_options, kernel_options, c_options, gamma_options)
+    )
 
     if not param_grid:
         raise ValueError(
@@ -102,7 +111,7 @@ def svm_grid_search(
 
     best_by_metric: BestModelResults = init_best_model_results()
 
-    for oversampler_cls, kernel_, C_ in console.track(
+    for oversampler_cls, kernel_, C_, gamma_ in console.track(
         param_grid,
         disable=not verbose,
         desc=f"Searching {len(param_grid)} parameter sets",
@@ -110,7 +119,7 @@ def svm_grid_search(
         oversampler_label = getattr(oversampler_cls, "__name__", str(oversampler_cls))
 
         with console.status(
-            f"Running with (oversampler={oversampler_label}, kernel={kernel_}, C={C_})",
+            f"Running with (oversampler={oversampler_label}, kernel={kernel_}, C={C_}, gamma={gamma_})",
             disable=not verbose,
         ) as status:
             clf, df_scores = svm_train_eval(
@@ -121,12 +130,13 @@ def svm_grid_search(
                 oversampler=oversampler_cls,
                 kernel=kernel_,
                 C=float(C_),
+                gamma=gamma_,
                 n_jobs=n_jobs,
                 verbose=verbose,
             )
 
             status.update(
-                f"Evaluating with (oversampler={oversampler_label}, kernel={kernel_}, C={C_})"
+                f"Evaluating with (oversampler={oversampler_label}, kernel={kernel_}, C={C_}, gamma={gamma_})"
             )
 
             macro_metrics = extract_global_metrics(df_scores, "MACRO")
@@ -137,6 +147,7 @@ def svm_grid_search(
                 "oversampler": oversampler_label,
                 "kernel": kernel_,
                 "C": float(C_),
+                "gamma": gamma_ if isinstance(gamma_, str) else float(gamma_),
                 "support_total": macro_metrics["support"],
             }
 
@@ -158,6 +169,7 @@ def svm_grid_search(
                 "oversampler_name": oversampler_label,
                 "kernel": kernel_,
                 "C": float(C_),
+                "gamma": gamma_,
             }
 
             for metric_name, metrics in (  # type: ignore
@@ -181,6 +193,7 @@ def svm_grid_search(
         "oversampler",
         "kernel",
         "C",
+        "gamma",
         "precision_macro",
         "recall_macro",
         "f1_macro",
