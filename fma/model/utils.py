@@ -6,6 +6,7 @@ from imblearn.over_sampling.base import BaseOverSampler
 from imblearn.pipeline import Pipeline
 from sklearn.base import BaseEstimator
 from sklearn.metrics import (
+    accuracy_score,
     f1_score,
     precision_recall_fscore_support,
     precision_score,
@@ -24,6 +25,7 @@ class GlobalMetrics(TypedDict):
     recall: float
     f1: float
     support: int
+    accuracy: float
 
 
 class ModelResultBase[T](TypedDict):
@@ -71,6 +73,9 @@ def evaluate_predictions_table(
         zero_division=0,  # type: ignore
     )
 
+    # Calculate per-class accuracy
+    per_class_accuracy = (Y_true == Y_pred).mean(axis=0).values
+
     df = pd.DataFrame(
         {
             "genre": label_titles,
@@ -78,12 +83,14 @@ def evaluate_predictions_table(
             "recall": rec,
             "f1": f1,
             "support": support,
+            "accuracy": per_class_accuracy,
         },
         index=Y_true.columns,  # keep the same index as labels/columns
     )
 
     # Aggregates
     total_support = int(support.sum())  # type: ignore[arg-type]
+    overall_accuracy = accuracy_score(Y_true, Y_pred)
     for index, avg_type in enumerate(["MACRO", "MICRO", "WEIGHTED"], start=-3):
         avg = cast(Literal["macro", "micro", "weighted"], avg_type.lower())
         df.loc[index] = [
@@ -92,6 +99,7 @@ def evaluate_predictions_table(
             recall_score(Y_true, Y_pred, average=avg, zero_division=0),  # type: ignore[arg-type]
             f1_score(Y_true, Y_pred, average=avg, zero_division=0),  # type: ignore[arg-type]
             total_support,
+            overall_accuracy,
         ]
 
     return cast(DataFrame[int, int, float | str], df)
@@ -122,6 +130,7 @@ def extract_global_metrics(
         "recall": float(r["recall"]),
         "f1": float(r["f1"]),
         "support": int(r["support"]),
+        "accuracy": float(r["accuracy"]),
     }
 
 
@@ -130,7 +139,13 @@ def init_best_model_results() -> BestModelResults:
     empty: ModelResultBase = {
         "score": float("-inf"),
         "params": {},  # will be set
-        "metrics": {"precision": 0.0, "recall": 0.0, "f1": 0.0, "support": 0},
+        "metrics": {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "support": 0,
+            "accuracy": 0.0,
+        },
         "estimator": cast(OneVsRestClassifier, None),  # will be set
         "results": cast(DataFrame[int, int, float | str], None),  # will be set
     }

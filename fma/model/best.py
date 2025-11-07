@@ -1,11 +1,12 @@
-from tabnanny import verbose
 from typing import Literal, TypedDict
 
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.over_sampling.base import BaseOverSampler
+from sklearn.multiclass import OneVsRestClassifier
 
 from fma.data import FMADataset
 from fma.model.svm import KernelType, svm_train_eval
+from fma.types import DataFrame
 
 
 class BestModelParams(TypedDict):
@@ -34,12 +35,12 @@ def get_best_model(
     n_jobs: int = -1,
     *,
     verbose: bool = True,
-):
+) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
     params = best_model_params[genre_set]
     oversampler = params["oversampler"]
     kernel = params["kernel"]
     C = params["C"]
-    model, _ = svm_train_eval(
+    model, df = svm_train_eval(
         dataset=dataset,
         genre_set=genre_set,
         random_state=42,
@@ -49,4 +50,4 @@ def get_best_model(
         n_jobs=n_jobs,
         verbose=verbose,
     )
-    return model
+    return model, df

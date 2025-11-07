@@ -1,6 +1,7 @@
 from fma import data, eda, model, plain
 from fma.data import read_dataset
 from fma.eda import describe_tracks, draw_genre_tree
+from fma.model.best import get_best_model
 from fma.model.dt import dt_grid_search
 from fma.model.lr import lr_grid_search
 from fma.model.rf import rf_grid_search
@@ -19,5 +20,6 @@ __all__ = [
     "svm_grid_search",
     "dt_grid_search",
     "rf_grid_search",
+    "get_best_model",
     "console",
 ]
