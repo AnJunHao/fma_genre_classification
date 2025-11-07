@@ -139,7 +139,7 @@ def dt_grid_search(
                 min_samples_leaf=min_samples_leaf_,
                 max_features=max_features_,
                 n_jobs=n_jobs,
-                verbose=False,
+                verbose=verbose,
             )
 
             status.update(
@@ -224,6 +224,7 @@ def dt_grid_search(
 
     if save_file is not None:
         save_file = Path(save_file).absolute()
+        save_file.parent.mkdir(parents=True, exist_ok=True)
         results_df.to_csv(save_file, index=False)
 
         if verbose:

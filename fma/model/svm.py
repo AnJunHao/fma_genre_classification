@@ -122,7 +122,7 @@ def svm_grid_search(
                 kernel=kernel_,
                 C=float(C_),
                 n_jobs=n_jobs,
-                verbose=False,
+                verbose=verbose,
             )
 
             status.update(
@@ -203,7 +203,7 @@ def svm_grid_search(
 
     if save_file is not None:
         save_file = Path(save_file).absolute()
-
+        save_file.parent.mkdir(parents=True, exist_ok=True)
         results_df.to_csv(save_file, index=False)
 
         if verbose:
