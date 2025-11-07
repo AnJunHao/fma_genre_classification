@@ -37,6 +37,7 @@ def svm_train_eval(
     gamma: float | Literal["scale", "auto"] = "scale",
     *,
     n_jobs: int = -1,
+    cache_size: int = 200,
     verbose: bool = True,
 ) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
     X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test(
@@ -46,7 +47,8 @@ def svm_train_eval(
     base_clf = SVC(
         kernel=kernel,
         C=C,
-        gamma=gamma,
+        gamma=gamma,  # type: ignore
+        cache_size=cache_size,
         class_weight=None if oversampler is not None else "balanced",
         probability=False,
         random_state=random_state,
@@ -91,6 +93,7 @@ def svm_grid_search(
     save_file: PathLike | None = None,
     *,
     n_jobs: int = -1,
+    cache_size: int = 200,
     verbose: bool = True,
 ) -> tuple[DataFrame[str, int, str | int | float], BestModelResults[ModelParams]]:
     oversampler_options = ensure_iterable_option(oversampler)
@@ -133,6 +136,7 @@ def svm_grid_search(
                 gamma=gamma_,
                 n_jobs=n_jobs,
                 verbose=verbose,
+                cache_size=cache_size,
             )
 
             status.update(
