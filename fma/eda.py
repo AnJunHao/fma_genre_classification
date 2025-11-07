@@ -1082,9 +1082,10 @@ def plot_pca(
     ax1.grid(True, alpha=0.3)
     ax1.legend(loc="lower right", fontsize=9)
     ax1.set_ylim([0, 1.05])
+    ax1.set_xlim([0, min(100, n_components)])
 
     # Plot 2: Individual explained variance (bar chart for first N components)
-    n_bars = min(50, n_components)
+    n_bars = min(20, n_components)
     ax2.bar(
         range(1, n_bars + 1),
         explained_variance_ratio[:n_bars],
@@ -1132,15 +1133,3 @@ def plot_pca(
     else:
         plt.show()
         plt.close()
-
-    # Print summary if verbose
-    if verbose:
-        console.log("\n[bold]PCA Summary:[/bold]")
-        for threshold in variance_thresholds:
-            if threshold <= cumulative_variance[-1]:
-                n_needed = np.argmax(cumulative_variance >= threshold) + 1
-                reduction = (1 - n_needed / X.shape[1]) * 100
-                console.log(
-                    f"  • {threshold * 100:.0f}% variance: {n_needed} components "
-                    f"({reduction:.1f}% reduction)"
-                )
