@@ -235,7 +235,7 @@ def svm_grid_search(
                     if all(term not in c for term in ["precision", "recall", "support"])
                 ]
             ],
-            fmt_spec=["^", "^", ".1e"] + [".2%"] * 3,
+            fmt_spec=["^", "^", ".1e", ".1e"] + [".2%"] * 3,
             title="Hyperparameter Grid Search Results",
         )
 
