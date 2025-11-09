@@ -19,7 +19,7 @@ best_model_params: dict[Literal["root", "non-root"], BestModelParams] = {
     "root": {
         "oversampler": RandomOverSampler,
         "kernel": "rbf",
-        "C": 1.0,
+        "C": 1.8,
     },
     "non-root": {
         "oversampler": None,

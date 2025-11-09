@@ -10,7 +10,6 @@ from typing import Literal, cast
 import numpy as np
 import pandas as pd
 from iterstrat.ml_stratifiers import MultilabelStratifiedShuffleSplit
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from fma.plain import console, with_status

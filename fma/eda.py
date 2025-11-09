@@ -740,7 +740,7 @@ def draw_genre_tree(
         plt.savefig(save_file)
         plt.close()
         if verbose:
-            console.done(f"Saved figure to {save_file}")
+            console.done(f"Saved genre tree figure to {save_file}")
     else:
         plt.show()
         plt.close()
@@ -963,7 +963,7 @@ def describe_tracks(
         plt.savefig(save_file)
         plt.close()
         if verbose:
-            console.done(f"Saved figure to {save_file}")
+            console.done(f"Saved track description figure to {save_file}")
     else:
         plt.show()
         plt.close()
@@ -1135,7 +1135,7 @@ def plot_pca(
         plt.savefig(save_file, dpi=300, bbox_inches="tight")
         plt.close()
         if verbose:
-            console.done(f"Saved PCA plot to {save_file}")
+            console.done(f"Saved PCA figure to {save_file}")
     else:
         plt.show()
         plt.close()
