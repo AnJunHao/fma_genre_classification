@@ -6,7 +6,7 @@ from typing import Any, Literal, TypedDict, cast
 import pandas as pd
 from imblearn.over_sampling import SMOTE
 from imblearn.over_sampling.base import BaseOverSampler
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.multiclass import OneVsRestClassifier
 
 from fma.data import FMADataset, PathLike
@@ -24,14 +24,15 @@ from fma.types import DataFrame
 
 
 @with_status(transient=False)
-def lr_train_eval(
+def hgb_train_eval(
     dataset: FMADataset,
     genre_set: Literal["all", "root", "non_root"] | Iterable[int] = "all",
     random_state: int = 42,
     test_size: float = 0.2,
     oversampler: type[BaseOverSampler] | None = SMOTE,
-    penalty: Literal["l1", "l2"] = "l2",
-    C: float = 1.0,
+    max_depth: int | None = None,
+    learning_rate: float = 0.1,
+    max_iter: int = 100,
     *,
     n_jobs: int = -1,
     verbose: bool = True,
@@ -41,13 +42,12 @@ def lr_train_eval(
     )
 
     # Construct the base classifier with appropriate class_weight depending on oversampling
-    base_clf = LogisticRegression(
-        penalty=penalty,
-        max_iter=1000,
-        C=C,
-        random_state=random_state,
-        solver="lbfgs" if penalty == "l2" else "liblinear",
+    base_clf = HistGradientBoostingClassifier(
+        max_depth=max_depth,
+        learning_rate=learning_rate,
+        max_iter=max_iter,
         class_weight=None if oversampler is not None else "balanced",
+        random_state=random_state,
     )
 
     with console.status("Training model...", disable=not verbose):
@@ -68,16 +68,18 @@ def lr_train_eval(
 class ModelParams(TypedDict):
     oversampler: type[BaseOverSampler] | None
     oversampler_name: str
-    penalty: Literal["l1", "l2"]
-    C: float
+    max_depth: int | None
+    learning_rate: float
+    max_iter: int
 
 
 @with_status(transient=False)
-def lr_grid_search(
+def hgb_grid_search(
     dataset: FMADataset,
     oversampler: Iterable[type[BaseOverSampler] | None] | type[BaseOverSampler] | None,
-    penalty: Iterable[Literal["l1", "l2"]] | Literal["l1", "l2"],
-    C: Iterable[float] | float,
+    max_depth: Iterable[int | None] | int | None,
+    learning_rate: Iterable[float] | float,
+    max_iter: Iterable[int] | int,
     genre_set: Literal["all", "root", "non_root"] | Iterable[int] = "all",
     random_state: int = 42,
     test_size: float = 0.2,
@@ -87,10 +89,18 @@ def lr_grid_search(
     verbose: bool = True,
 ) -> tuple[DataFrame[str, int, str | int | float], BestModelResults[ModelParams]]:
     oversampler_options = ensure_iterable_option(oversampler)
-    penalty_options = ensure_iterable_option(penalty)
-    c_options = ensure_iterable_option(C)
+    max_depth_options = ensure_iterable_option(max_depth)
+    learning_rate_options = ensure_iterable_option(learning_rate)
+    max_iter_options = ensure_iterable_option(max_iter)
 
-    param_grid = list(product(oversampler_options, penalty_options, c_options))
+    param_grid = list(
+        product(
+            oversampler_options,
+            max_depth_options,
+            learning_rate_options,
+            max_iter_options,
+        )
+    )
 
     if not param_grid:
         raise ValueError(
@@ -101,31 +111,44 @@ def lr_grid_search(
 
     best_by_metric: BestModelResults = init_best_model_results()
 
-    for oversampler_cls, penalty_, C_ in console.track(
+    for (
+        oversampler_cls,
+        max_depth_,
+        learning_rate_,
+        max_iter_,
+    ) in console.track(
         param_grid,
         disable=not verbose,
         desc=f"Searching {len(param_grid)} parameter sets",
     ):
         oversampler_label = getattr(oversampler_cls, "__name__", str(oversampler_cls))
+        max_depth_label = "None" if max_depth_ is None else max_depth_
 
         with console.status(
-            f"Running with (oversampler={oversampler_label}, penalty={penalty_}, C={C_})",
+            (
+                f"Running with (oversampler={oversampler_label}, max_depth={max_depth_label}, "
+                f"learning_rate={learning_rate_}, max_iter={max_iter_})"
+            ),
             disable=not verbose,
         ) as status:
-            clf, df_scores = lr_train_eval(
+            clf, df_scores = hgb_train_eval(
                 dataset,
                 genre_set=genre_set,
                 random_state=random_state,
                 test_size=test_size,
                 oversampler=oversampler_cls,
-                penalty=penalty_,
-                C=float(C_),
+                max_depth=max_depth_,
+                learning_rate=learning_rate_,
+                max_iter=max_iter_,
                 n_jobs=n_jobs,
                 verbose=verbose,
             )
 
             status.update(
-                f"Evaluating with (oversampler={oversampler_label}, penalty={penalty_}, C={C_})"
+                (
+                    f"Evaluating with (oversampler={oversampler_label}, max_depth={max_depth_label}, "
+                    f"learning_rate={learning_rate_}, max_iter={max_iter_})"
+                )
             )
 
             macro_metrics = extract_global_metrics(df_scores, "MACRO")
@@ -134,8 +157,9 @@ def lr_grid_search(
 
             record: dict[str, Any] = {
                 "oversampler": oversampler_label,
-                "penalty": penalty_,
-                "C": float(C_),
+                "max_depth": max_depth_label,
+                "learning_rate": learning_rate_,
+                "max_iter": max_iter_,
                 "support_total": macro_metrics["support"],
             }
 
@@ -153,8 +177,9 @@ def lr_grid_search(
             params: dict[str, Any] = {
                 "oversampler": oversampler_cls,
                 "oversampler_name": oversampler_label,
-                "penalty": penalty_,
-                "C": float(C_),
+                "max_depth": max_depth_,
+                "learning_rate": learning_rate_,
+                "max_iter": max_iter_,
             }
 
             for metric_name, metrics in (
@@ -176,8 +201,9 @@ def lr_grid_search(
 
     ordered_columns = [
         "oversampler",
-        "penalty",
-        "C",
+        "max_depth",
+        "learning_rate",
+        "max_iter",
         "precision_macro",
         "recall_macro",
         "f1_macro",
@@ -215,7 +241,7 @@ def lr_grid_search(
                     if all(term not in c for term in ["precision", "recall", "support"])
                 ]
             ],
-            fmt_spec=["^", "^", ".1e"] + [".2%"] * 3,
+            fmt_spec=["^", "^", "^", "^"] + [".2%"] * 3,
             title="Hyperparameter Grid Search Results",
         )
 

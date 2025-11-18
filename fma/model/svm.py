@@ -28,7 +28,7 @@ KernelType = Literal["linear", "poly", "rbf", "sigmoid"]
 @with_status(transient=False)
 def svm_train_eval(
     dataset: FMADataset,
-    genre_set: Literal["all", "root", "non-root"] | Iterable[int] = "all",
+    genre_set: Literal["all", "root", "non_root"] | Iterable[int] = "all",
     random_state: int = 42,
     test_size: float = 0.2,
     oversampler: type[BaseOverSampler] | None = SMOTE,
@@ -39,7 +39,7 @@ def svm_train_eval(
     n_jobs: int = -1,
     cache_size: int = 200,
     verbose: bool = True,
-) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
+) -> tuple[OneVsRestClassifier, DataFrame[str, int, float | str]]:
     X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test(
         genre_set, test_size=test_size, random_state=random_state, verbose=verbose
     )
@@ -66,7 +66,7 @@ def svm_train_eval(
 
         df = evaluation_dataframe_from_dataset(dataset, Y_test, Y_pred)  # type: ignore
 
-    df = cast(DataFrame[int, int, float | str], df)
+    df = cast(DataFrame[str, int, float | str], df)
     return clf, df
 
 
@@ -87,7 +87,7 @@ def svm_grid_search(
     gamma: Iterable[float | Literal["scale", "auto"]]
     | float
     | Literal["scale", "auto"],
-    genre_set: Literal["all", "root", "non-root"] | Iterable[int] = "all",
+    genre_set: Literal["all", "root", "non_root"] | Iterable[int] = "all",
     random_state: int = 42,
     test_size: float = 0.2,
     save_file: PathLike | None = None,

@@ -35,7 +35,7 @@ class ModelResultBase[T](TypedDict):
     params: T
     metrics: GlobalMetrics
     estimator: OneVsRestClassifier
-    results: DataFrame[int, int, float | str]
+    results: DataFrame[str, int, float | str]
 
 
 class BestModelResults[T](TypedDict):
@@ -57,7 +57,7 @@ def evaluate_predictions_table(
     Y_true: pd.DataFrame,
     Y_pred: pd.DataFrame | Any,
     label_titles: list[str],
-) -> DataFrame[int, int, float | str]:
+) -> DataFrame[str, int, float | str]:
     """Create the per-label and aggregated metrics table.
 
     Returns a DataFrame with:
@@ -102,14 +102,14 @@ def evaluate_predictions_table(
             overall_accuracy,
         ]
 
-    return cast(DataFrame[int, int, float | str], df)
+    return cast(DataFrame[str, int, float | str], df)
 
 
 def evaluation_dataframe_from_dataset(
     dataset: FMADataset,
     Y_true: DataFrame[int, int, bool],
     Y_pred: DataFrame[int, int, bool],
-) -> DataFrame[int, int, float | str]:
+) -> DataFrame[str, int, float | str]:
     """Build the evaluation table using the dataset mapping for label titles."""
     titles = [dataset.id_to_genre[c].title for c in Y_true.columns]
     return evaluate_predictions_table(Y_true, Y_pred, titles)
@@ -147,7 +147,7 @@ def init_best_model_results() -> BestModelResults:
             "accuracy": 0.0,
         },
         "estimator": cast(OneVsRestClassifier, None),  # will be set
-        "results": cast(DataFrame[int, int, float | str], None),  # will be set
+        "results": cast(DataFrame[str, int, float | str], None),  # will be set
     }
     return {
         "macro": empty.copy(),
@@ -162,7 +162,7 @@ def maybe_update_best(
     score: float,
     params: dict[str, Any],
     estimator: OneVsRestClassifier,
-    results_df: DataFrame[int, int, float | str],
+    results_df: DataFrame[str, int, float | str],
     metrics: GlobalMetrics,
 ) -> None:
     """Update the best tracker in-place if a new score is better."""

@@ -13,3 +13,4 @@ wheels/
 fma_metadata/
 result/
 *.png
+.cache/

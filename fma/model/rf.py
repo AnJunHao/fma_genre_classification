@@ -26,7 +26,7 @@ from fma.types import DataFrame
 @with_status(transient=False)
 def rf_train_eval(
     dataset: FMADataset,
-    genre_set: Literal["all", "root", "non-root"] | Iterable[int] = "all",
+    genre_set: Literal["all", "root", "non_root"] | Iterable[int] = "all",
     random_state: int = 42,
     test_size: float = 0.2,
     oversampler: type[BaseOverSampler] | None = SMOTE,
@@ -36,7 +36,7 @@ def rf_train_eval(
     *,
     n_jobs: int = -1,
     verbose: bool = True,
-) -> tuple[OneVsRestClassifier, DataFrame[int, int, float | str]]:
+) -> tuple[OneVsRestClassifier, DataFrame[str, int, float | str]]:
     X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test(
         genre_set, test_size=test_size, random_state=random_state, verbose=verbose
     )
@@ -80,7 +80,7 @@ def rf_grid_search(
     max_depth: Iterable[int | None] | int | None,
     min_samples_leaf: Iterable[int] | int,
     n_estimators: Iterable[int] | int,
-    genre_set: Literal["all", "root", "non-root"] | Iterable[int] = "all",
+    genre_set: Literal["all", "root", "non_root"] | Iterable[int] = "all",
     random_state: int = 42,
     test_size: float = 0.2,
     save_file: PathLike | None = None,

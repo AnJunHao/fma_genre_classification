@@ -15,7 +15,7 @@ dataset.remove_rare_genres()
 oversampler_grid = [SMOTE, SVMSMOTE, BorderlineSMOTE, ADASYN, RandomOverSampler, None]
 
 # %%
-for subset in ("root", "non-root"):
+for subset in ("root", "non_root"):
     df, result = lr_grid_search(
         dataset,
         genre_set=subset,

@@ -2,7 +2,7 @@ import time
 from ast import literal_eval
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import chain
 from pathlib import Path
 from typing import Literal, cast
@@ -204,6 +204,9 @@ def read_genres(path: PathLike, *, verbose: bool = True) -> IDtoGenre:
     return id_to_genre
 
 
+type TrainTestCacheKey = tuple[Literal["all", "root", "non_root"], float, int]
+
+
 @dataclass
 class FMADataset:
     librosa: LibrosaDF
@@ -213,6 +216,16 @@ class FMADataset:
     tracks: TracksDF
     track_genres: Genres
     id_to_genre: IDtoGenre
+    _train_test_cache: dict[
+        TrainTestCacheKey,
+        tuple[
+            FeaturesDF,
+            FeaturesDF,
+            DataFrame[int, int, bool],
+            DataFrame[int, int, bool],
+            StandardScaler,
+        ],
+    ] = field(default_factory=dict, init=False)
 
     def assert_all_parent_genres_included(self) -> None:
         for i, g_list in enumerate(self.track_genres):
@@ -228,28 +241,48 @@ class FMADataset:
         counter = Counter(g for g_list in self.track_genres for g in g_list)
         n_threshold = len(self.track_genres) // divider
 
+        n_genres_before = len(counter)
+
         # Filter out genres with counts less than threshold
         self.track_genres = self.track_genres.apply(
             lambda g_list: [g for g in g_list if counter[g] >= n_threshold]
         )
 
+        counter_after = Counter(g for g_list in self.track_genres for g in g_list)
+        n_genres_after = len(counter_after)
+        n_removed = n_genres_before - n_genres_after
+        console.done(
+            f"Removed {n_removed} genres with counts < {n_threshold} ({n_genres_before} genres -> {n_genres_after} genres)"
+        )
+        self._train_test_cache = dict()
+
     @property
     def genre_ids(self) -> list[int]:
-        return list(set(g for g_list in self.track_genres for g in g_list))
+        return list(sorted(set(int(g) for g_list in self.track_genres for g in g_list)))
 
     @property
     def root_genre_ids(self) -> list[int]:
         return list(
-            set(
-                self.id_to_genre[g].top_level_id
-                for g_list in self.track_genres
-                for g in g_list
+            sorted(
+                set(
+                    self.id_to_genre[g].top_level_id
+                    for g_list in self.track_genres
+                    for g in g_list
+                )
             )
         )
 
     @property
     def non_root_genre_ids(self) -> list[int]:
-        return list(set(self.genre_ids) - set(self.root_genre_ids))
+        return list(sorted(set(self.genre_ids) - set(self.root_genre_ids)))
+
+    @property
+    def genre_sets(self) -> dict[Literal["all", "root", "non_root"], list[int]]:
+        return {
+            "all": self.genre_ids,
+            "root": self.root_genre_ids,
+            "non_root": self.non_root_genre_ids,
+        }
 
     def get_binary_labels(self, genre_id: int) -> list[bool]:
         return [genre_id in g_list for g_list in self.track_genres]
@@ -257,7 +290,7 @@ class FMADataset:
     @with_status(transient=False)
     def prepare_train_test(
         self,
-        genre_set: Literal["all", "root", "non-root"] | Iterable[int] = "all",
+        genre_set: Literal["all", "root", "non_root"] | Iterable[int] = "all",
         test_size: float = 0.2,
         random_state: int = 42,
         *,
@@ -269,11 +302,17 @@ class FMADataset:
         DataFrame[int, int, bool],
         StandardScaler,
     ]:
+        cache_key: TrainTestCacheKey | None = None
+        if genre_set in ("all", "root", "non_root"):
+            genre_set = cast(Literal["all", "root", "non_root"], genre_set)
+            cache_key = (genre_set, test_size, random_state)
+            if cache_key in self._train_test_cache:
+                return self._train_test_cache[cache_key]
         if genre_set == "all":
             genre_set = self.genre_ids
         elif genre_set == "root":
             genre_set = self.root_genre_ids
-        elif genre_set == "non-root":
+        elif genre_set == "non_root":
             genre_set = self.non_root_genre_ids
         else:
             genre_set = list(genre_set)
@@ -302,7 +341,17 @@ class FMADataset:
         scaler = StandardScaler()
         X_train = scaler.fit_transform(X_train)
         X_test = scaler.transform(X_test)
-        return X_train, X_test, Y_train, Y_test, scaler  # type: ignore
+        X_train = cast(FeaturesDF, X_train)
+        X_test = cast(FeaturesDF, X_test)
+        if cache_key is not None:
+            self._train_test_cache[cache_key] = (
+                X_train,
+                X_test,
+                Y_train,
+                Y_test,
+                scaler,
+            )
+        return X_train, X_test, Y_train, Y_test, scaler
 
 
 @with_status

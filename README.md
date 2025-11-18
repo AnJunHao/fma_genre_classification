@@ -181,7 +181,7 @@ dataset.remove_rare_genres()  # Remove infrequent genres
 # Train and evaluate SVM on root genres
 clf, metrics_df = svm_train_eval(
     dataset,
-    genre_set="root",        # Options: "all", "root", "non-root", or list of genre IDs
+    genre_set="root",        # Options: "all", "root", "non_root", or list of genre IDs
     oversampler=SMOTE,       # Handle class imbalance
     kernel="rbf",
     C=1.0

@@ -22,7 +22,9 @@ def draw_genre_tree(
     *,
     num_rows: int = 3,
     n_bins: int = 5,
+    width_variance_threshold: float | None = None,
     verbose: bool = True,
+    debug: bool = False,
 ) -> None:
     """
     Visualize the hierarchical genre tree structure.
@@ -147,32 +149,20 @@ def draw_genre_tree(
         num_rows,
         node_width_multiplier,
         horizontal_spacing,
-        width_variance_threshold: float | None = None,
+        width_variance_threshold: float | None,
     ):
         """
         Assign trees (root genres) to rows while balancing widths and minimizing total height.
 
         Strategy:
-            * Compute a reasonable width-variance target from the width-only baseline when none
-              is supplied.
-            * Allow a soft overrun of that target during the improvement search so that height
-              can be reduced even if an intermediate step widens a row.
-            * Run several deterministic restarts (width-first, height-first, randomized) with
-              hill climbing, then a tightening pass that reduces width variance while keeping
-              height minimal.
-            * Return the best layout that satisfies the hard threshold; if none do, fall back
-              to the best layout found and report the overshoot.
-
-        Args:
-            root_genres: List of root genre objects.
-            num_rows: Number of available rows.
-            node_width_multiplier: Width multiplier per leaf node.
-            horizontal_spacing: Spacing between trees within a row.
-            width_variance_threshold: Optional hard cap on the acceptable width variance.
-                                      If omitted, a data-driven default is used.
-
-        Returns:
-            List[List[Genre]] – each inner list is the set of root genres assigned to that row.
+            * Compute a width-only baseline and treat its variance as a default target when none
+              is provided.
+            * Track the best layout that stays within the hard width-variance threshold at all
+              times. Final output is guaranteed to honor that constraint; if no such layout exists,
+              a RuntimeError is raised.
+            * Maintain row coverage (no empty rows) whenever feasible (i.e., roots ≥ rows).
+            * Use several hill-climbing passes (soft height, width tightening, strictly-feasible
+              height refinement) to explore the search space.
         """
         import random
 
@@ -183,6 +173,32 @@ def draw_genre_tree(
 
         tol = 1e-6
         rng = random.Random(42)
+
+        must_cover_rows = len(root_genres) >= num_rows and num_rows > 0
+
+        def rows_valid(rows_local: list[list]) -> bool:
+            if not must_cover_rows:
+                return True
+            return all(len(row) > 0 for row in rows_local)
+
+        def enforce_non_empty_rows(rows_local: list[list]) -> list[list]:
+            rows_copy = [list(r) for r in rows_local]
+            if not must_cover_rows:
+                return rows_copy
+            empties = [idx for idx, row in enumerate(rows_copy) if not row]
+            for empty_idx in empties:
+                surplus_indices = [
+                    idx for idx, row in enumerate(rows_copy) if len(row) > 1
+                ]
+                if not surplus_indices:
+                    break
+                src_idx = max(surplus_indices, key=lambda i: len(rows_copy[i]))
+                rows_copy[empty_idx].append(rows_copy[src_idx].pop())
+            if any(len(row) == 0 for row in rows_copy):
+                raise RuntimeError(
+                    "Unable to keep rows populated despite sufficient roots."
+                )
+            return rows_copy
 
         # --- Pre-compute per-tree width and height contribution ---------------------------------
         tree_width_map: dict[int, float] = {}
@@ -244,6 +260,7 @@ def draw_genre_tree(
                 increment += horizontal_spacing
             baseline_rows[idx].append(root)
             baseline_widths[idx] += increment
+        baseline_rows = enforce_non_empty_rows(baseline_rows)
         baseline_cost = compute_cost(baseline_rows)
         baseline_variance = baseline_cost[0]
 
@@ -259,6 +276,19 @@ def draw_genre_tree(
         def within_hard(cost: tuple[float, float]) -> bool:
             return cost[0] <= hard_threshold + tol
 
+        best_feasible: tuple[list[list], tuple[float, float]] | None = None
+
+        def record_candidate(rows: list[list], cost: tuple[float, float]) -> None:
+            nonlocal best_feasible
+            if not within_hard(cost):
+                return
+            rows_copy = [list(r) for r in rows]
+            if best_feasible is None or lex_height_then_width(cost, best_feasible[1]):
+                best_feasible = (rows_copy, cost)
+
+        # Record the baseline before any optimization
+        record_candidate(baseline_rows, baseline_cost)
+
         # --- Move generators -------------------------------------------------------------------
         def try_all_single_moves(
             rows_local: list[list],
@@ -272,6 +302,8 @@ def draw_genre_tree(
                         candidate_rows = [list(r) for r in rows_local]
                         candidate_rows[src_idx].pop(item_idx)
                         candidate_rows[dst_idx].append(root)
+                        if not rows_valid(candidate_rows):
+                            continue
                         cost = compute_cost(candidate_rows)
                         moves.append((candidate_rows, cost))
             return moves
@@ -287,6 +319,8 @@ def draw_genre_tree(
                             candidate_rows = [list(r) for r in rows_local]
                             candidate_rows[i][idx_a] = root_b
                             candidate_rows[j][idx_b] = root_a
+                            if not rows_valid(candidate_rows):
+                                continue
                             cost = compute_cost(candidate_rows)
                             swaps.append((candidate_rows, cost))
             return swaps
@@ -297,6 +331,7 @@ def draw_genre_tree(
         ) -> tuple[list[list], tuple[float, float]]:
             rows = [list(r) for r in rows_local]
             current_cost = compute_cost(rows)
+            record_candidate(rows, current_cost)
             improved = True
             while improved:
                 improved = False
@@ -304,7 +339,6 @@ def draw_genre_tree(
                 for candidate, cost in try_all_single_moves(rows) + try_all_swaps(rows):
                     if not within_soft(cost):
                         continue
-                    # Prefer lower height; if equal height, prefer smaller variance
                     if cost[1] + tol < current_cost[1]:
                         if (
                             best_candidate is None
@@ -326,6 +360,7 @@ def draw_genre_tree(
                             best_candidate = (candidate, cost)
                 if best_candidate:
                     rows, current_cost = best_candidate
+                    record_candidate(rows, current_cost)
                     improved = True
             return rows, current_cost
 
@@ -334,6 +369,7 @@ def draw_genre_tree(
         ) -> tuple[list[list], tuple[float, float]]:
             rows = [list(r) for r in rows_local]
             current_cost = compute_cost(rows)
+            record_candidate(rows, current_cost)
             improved = True
             while improved:
                 improved = False
@@ -353,7 +389,34 @@ def draw_genre_tree(
                             best_candidate = (candidate, cost)
                 if best_candidate:
                     rows, current_cost = best_candidate
+                    record_candidate(rows, current_cost)
                     improved = True
+            return rows, current_cost
+
+        def feasible_height_pass(
+            rows_local: list[list],
+        ) -> tuple[list[list], tuple[float, float]]:
+            """
+            Hill-climb strictly within the feasible region (variance <= hard threshold)
+            to reduce total height as much as possible.
+            """
+            rows = [list(r) for r in rows_local]
+            current_cost = compute_cost(rows)
+            record_candidate(rows, current_cost)
+            if not within_hard(current_cost):
+                return rows, current_cost
+            improved = True
+            while improved:
+                improved = False
+                for candidate, cost in try_all_single_moves(rows) + try_all_swaps(rows):
+                    if not within_hard(cost):
+                        continue
+                    if lex_height_then_width(cost, current_cost):
+                        rows = candidate
+                        current_cost = cost
+                        record_candidate(rows, current_cost)
+                        improved = True
+                        break
             return rows, current_cost
 
         # --- Seeding strategies -----------------------------------------------------------------
@@ -375,19 +438,21 @@ def draw_genre_tree(
                 for idx in range(num_rows):
                     candidate_rows = [list(r) for r in rows]
                     candidate_rows[idx].append(root)
+                    if not rows_valid(candidate_rows):
+                        continue
                     cost = compute_cost(candidate_rows)
                     if best_cost is None or lex_height_then_width(cost, best_cost):
                         best_idx = idx
                         best_cost = cost
                 rows[best_idx].append(root)
-            return rows
+            return enforce_non_empty_rows(rows)
 
         def random_seed() -> list[list]:
             rows = [[] for _ in range(num_rows)]
             for root in rng.sample(root_genres, len(root_genres)):
                 idx = rng.randrange(num_rows)
                 rows[idx].append(root)
-            return rows
+            return enforce_non_empty_rows(rows)
 
         seed_layouts: list[list[list]] = []
         seed_layouts.append(baseline_rows)
@@ -401,60 +466,59 @@ def draw_genre_tree(
         seen_signatures = set()
         unique_seeds = []
         for seed in seed_layouts:
+            if not rows_valid(seed):
+                continue
             signature = tuple(tuple(sorted(item.id for item in row)) for row in seed)
             if signature not in seen_signatures:
                 seen_signatures.add(signature)
                 unique_seeds.append(seed)
 
         # --- Main search loop -------------------------------------------------------------------
-        best_within_threshold: tuple[list[list], tuple[float, float]] | None = None
-        best_overall: tuple[list[list], tuple[float, float]] | None = None
-
         for seed in unique_seeds:
+            seed_cost = compute_cost(seed)
+            record_candidate(seed, seed_cost)
+
             rows, cost = soft_height_pass(seed)
+            record_candidate(rows, cost)
+
             rows, cost = tighten_width(rows)
+            record_candidate(rows, cost)
 
-            if best_overall is None or lex_height_then_width(cost, best_overall[1]):
-                best_overall = (rows, cost)
+            rows, cost = feasible_height_pass(rows)
+            record_candidate(rows, cost)
 
-            if within_hard(cost):
-                if best_within_threshold is None or lex_height_then_width(
-                    cost, best_within_threshold[1]
-                ):
-                    best_within_threshold = (rows, cost)
+        if best_feasible is None:
+            raise RuntimeError(
+                "Unable to satisfy the requested width variance threshold. "
+                "Try increasing the threshold, adding more rows, or adjusting input data."
+            )
 
-        if best_within_threshold is not None:
-            chosen_rows, chosen_cost = best_within_threshold
-        elif best_overall is not None:
-            chosen_rows, chosen_cost = best_overall
-        else:
-            assert False, "Unreachable"
+        chosen_rows, chosen_cost = best_feasible
 
-        # if verbose:
-        #     wv, total_height = chosen_cost
-        #     widths, heights = compute_row_metrics(chosen_rows)
-        #     row_levels = [h + 1 if h >= 0 else 0 for h in heights]
+        if must_cover_rows and not rows_valid(chosen_rows):
+            raise RuntimeError(
+                "Final row assignment violates non-empty-row constraint."
+            )
 
-        #     print(
-        #         f"Width variance threshold (hard/soft): {hard_threshold:.3f} / "
-        #         f"{('∞' if not np.isfinite(soft_threshold) else f'{soft_threshold:.3f}')}"
-        #     )
-        #     print(f"Baseline width variance: {baseline_variance:.3f}")
-        #     print(f"Row widths after optimization: {[f'{w:.1f}' for w in widths]}")
-        #     print(f"Width variance: {wv:.3f}")
-        #     print(f"Row heights (levels): {row_levels}")
-        #     print(f"Total height score (spacing units): {total_height:.3f}")
+        if debug:
+            wv, total_height = chosen_cost
+            widths, heights = compute_row_metrics(chosen_rows)
+            row_levels = [h + 1 if h >= 0 else 0 for h in heights]
 
-        #     if best_within_threshold is None and np.isfinite(hard_threshold):
-        #         print(
-        #             "Warning: Could not satisfy the requested width variance threshold. "
-        #             "Returned the best overall layout instead."
-        #         )
+            print(
+                f"Width variance threshold (hard/soft): {hard_threshold:.3f} / "
+                f"{('∞' if not np.isfinite(soft_threshold) else f'{soft_threshold:.3f}')}"
+            )
+            print(f"Baseline width variance: {baseline_variance:.3f}")
+            print(f"Row widths after optimization: {[f'{w:.1f}' for w in widths]}")
+            print(f"Width variance: {wv:.3f}")
+            print(f"Row heights (levels): {row_levels}")
+            print(f"Total height score (spacing units): {total_height:.3f}")
 
         return chosen_rows
 
     # Constants
-    HORIZONTAL_SPACING = 0.5
+    HORIZONTAL_SPACING = 1
     NODE_WIDTH_MULTIPLIER = 1
     VERTICAL_LEVEL_SPACING = 3.0
     ROW_SPACING = 0
@@ -463,7 +527,11 @@ def draw_genre_tree(
 
     # Use optimized assignment algorithm
     rows = assign_trees_to_rows(
-        root_genres, NUM_ROWS, NODE_WIDTH_MULTIPLIER, HORIZONTAL_SPACING
+        root_genres,
+        NUM_ROWS,
+        NODE_WIDTH_MULTIPLIER,
+        HORIZONTAL_SPACING,
+        width_variance_threshold=width_variance_threshold,
     )
 
     # Calculate positions for all genres with row-based layout
