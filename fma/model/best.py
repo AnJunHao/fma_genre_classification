@@ -11,7 +11,7 @@ from sklearn.multiclass import OneVsRestClassifier
 from fma.data import FMADataset
 from fma.model.svm import KernelType, svm_train_eval
 from fma.plain import console
-from fma.types import DataFrame
+from fma.types import DataFrame, MetricsDF
 
 
 class BestModelParams(TypedDict):
@@ -48,7 +48,7 @@ def _load_from_cache(
     genre_set: Literal["root", "non_root"],
     hash_key: int,
     verbose: bool = True,
-) -> tuple[OneVsRestClassifier, DataFrame[str, int, float | str]] | None:
+) -> tuple[OneVsRestClassifier, MetricsDF] | None:
     """Load model and dataframe from cache if they exist."""
     model_path, df_path = _get_cache_paths(genre_set, hash_key)
 
@@ -78,7 +78,7 @@ def _load_from_cache(
 
 def _save_to_cache(
     model: OneVsRestClassifier,
-    df: DataFrame[str, int, float | str],
+    df: MetricsDF,
     genre_set: Literal["root", "non_root"],
     hash_key: int,
     verbose: bool = True,
@@ -112,7 +112,7 @@ def get_best_model(
     *,
     verbose: bool = True,
     cache: bool = True,
-) -> tuple[OneVsRestClassifier, DataFrame[str, int, float | str]]:
+) -> tuple[OneVsRestClassifier, MetricsDF]:
     # Try to load from cache if caching is enabled
     hash_key = abs(hash(tuple(dataset.genre_sets[genre_set])))
     if cache:

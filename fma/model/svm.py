@@ -20,7 +20,7 @@ from fma.model.utils import (
     maybe_update_best,
 )
 from fma.plain import console, with_status
-from fma.types import DataFrame
+from fma.types import DataFrame, MetricsDF
 
 KernelType = Literal["linear", "poly", "rbf", "sigmoid"]
 
@@ -39,7 +39,7 @@ def svm_train_eval(
     n_jobs: int = -1,
     cache_size: int = 200,
     verbose: bool = True,
-) -> tuple[OneVsRestClassifier, DataFrame[str, int, float | str]]:
+) -> tuple[OneVsRestClassifier, MetricsDF]:
     X_train, X_test, Y_train, Y_test, _ = dataset.prepare_train_test(
         genre_set, test_size=test_size, random_state=random_state, verbose=verbose
     )
@@ -65,8 +65,6 @@ def svm_train_eval(
         Y_pred = clf.predict(X_test)
 
         df = evaluation_dataframe_from_dataset(dataset, Y_test, Y_pred)  # type: ignore
-
-    df = cast(DataFrame[str, int, float | str], df)
     return clf, df
 
 
@@ -212,7 +210,7 @@ def svm_grid_search(
 
     results_df = (
         results_df[ordered_columns]
-        .sort_values(by=["f1_macro", "f1_micro", "f1_weighted"], ascending=False)
+        .sort_values(by=["f1_macro", "f1_micro", "f1_weighted"], ascending=False)  # ty: ignore
         .reset_index(drop=True)
     )
 

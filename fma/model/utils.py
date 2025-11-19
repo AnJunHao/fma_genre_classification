@@ -15,7 +15,7 @@ from sklearn.metrics import (
 from sklearn.multiclass import OneVsRestClassifier
 
 from fma.data import FMADataset
-from fma.types import DataFrame
+from fma.types import DataFrame, MetricsDF
 
 
 class GlobalMetrics(TypedDict):
@@ -35,7 +35,7 @@ class ModelResultBase[T](TypedDict):
     params: T
     metrics: GlobalMetrics
     estimator: OneVsRestClassifier
-    results: DataFrame[str, int, float | str]
+    results: MetricsDF
 
 
 class BestModelResults[T](TypedDict):
@@ -57,7 +57,7 @@ def evaluate_predictions_table(
     Y_true: pd.DataFrame,
     Y_pred: pd.DataFrame | Any,
     label_titles: list[str],
-) -> DataFrame[str, int, float | str]:
+) -> MetricsDF:
     """Create the per-label and aggregated metrics table.
 
     Returns a DataFrame with:
@@ -72,9 +72,13 @@ def evaluate_predictions_table(
         average=None,
         zero_division=0,  # type: ignore
     )
+    support = cast(int, support)
 
     # Calculate per-class accuracy
     per_class_accuracy = (Y_true == Y_pred).mean(axis=0).values
+
+    dataset_size = len(Y_true)
+    genre_frequency = support / dataset_size if dataset_size > 0 else support * 0.0
 
     df = pd.DataFrame(
         {
@@ -84,6 +88,7 @@ def evaluate_predictions_table(
             "f1": f1,
             "support": support,
             "accuracy": per_class_accuracy,
+            "genre_frequency": genre_frequency,
         },
         index=Y_true.columns,  # keep the same index as labels/columns
     )
@@ -100,16 +105,17 @@ def evaluate_predictions_table(
             f1_score(Y_true, Y_pred, average=avg, zero_division=0),  # type: ignore[arg-type]
             total_support,
             overall_accuracy,
+            1.0,
         ]
 
-    return cast(DataFrame[str, int, float | str], df)
+    return cast(MetricsDF, df)
 
 
 def evaluation_dataframe_from_dataset(
     dataset: FMADataset,
     Y_true: DataFrame[int, int, bool],
     Y_pred: DataFrame[int, int, bool],
-) -> DataFrame[str, int, float | str]:
+) -> MetricsDF:
     """Build the evaluation table using the dataset mapping for label titles."""
     titles = [dataset.id_to_genre[c].title for c in Y_true.columns]
     return evaluate_predictions_table(Y_true, Y_pred, titles)
@@ -147,7 +153,7 @@ def init_best_model_results() -> BestModelResults:
             "accuracy": 0.0,
         },
         "estimator": cast(OneVsRestClassifier, None),  # will be set
-        "results": cast(DataFrame[str, int, float | str], None),  # will be set
+        "results": cast(MetricsDF, None),  # will be set
     }
     return {
         "macro": empty.copy(),
@@ -162,7 +168,7 @@ def maybe_update_best(
     score: float,
     params: dict[str, Any],
     estimator: OneVsRestClassifier,
-    results_df: DataFrame[str, int, float | str],
+    results_df: MetricsDF,
     metrics: GlobalMetrics,
 ) -> None:
     """Update the best tracker in-place if a new score is better."""

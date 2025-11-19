@@ -1,13 +1,14 @@
-from os import PathLike as PathLikeABC
-from typing import Literal, overload, Any, TYPE_CHECKING
-from collections.abc import Iterable, Callable, Iterator
-import pandas as pd
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from os import PathLike as PathLikeABC
+from typing import TYPE_CHECKING, Any, Literal, overload
+
+import pandas as pd
 from numpy.typing import NDArray
 
 if TYPE_CHECKING:
-    from pandas.core.frame import _LocIndexerFrame, _iLocIndexerFrame
-    from pandas.core.series import _LocIndexerSeries, _iLocIndexerSeries
+    from pandas.core.frame import _iLocIndexerFrame, _LocIndexerFrame
+    from pandas.core.series import _iLocIndexerSeries, _LocIndexerSeries
 else:
 
     class _LocIndexerFrame: ...
@@ -177,3 +178,8 @@ type GenreCSVDF = DataFrame[GenreCSVCol, int, int | str]
 
 type FeaturesCol = LibrosaCol | EchonestCol
 type FeaturesDF = DataFrame[FeaturesCol, int, float]
+
+type MetricsCol = Literal[
+    "genre", "precision", "recall", "f1", "support", "accuracy", "genre_frequency"
+]
+type MetricsDF = DataFrame[MetricsCol, int, str | float]

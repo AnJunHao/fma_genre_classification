@@ -1,18 +1,102 @@
 import colorsys
 from collections import Counter
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.patches import FancyBboxPatch
+from matplotlib.ticker import PercentFormatter
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
 from fma.data import FMADataset
 from fma.plain import console, with_status
-from fma.types import PathLike
+from fma.types import MetricsDF, PathLike
+
+
+@with_status
+def plot_classification_report(
+    df: MetricsDF,
+    save_file: str,
+    title: str,
+    sort_by: Literal["f1", "precision", "recall", "genre_frequency"] = "f1",
+    top_n: int | None = None,
+    *,
+    verbose: bool = True,
+):
+    """
+    Visualizes the classification report from a DataFrame.
+
+    Args:
+        df (pd.DataFrame): DataFrame with columns 'genre', 'precision', 'recall', 'f1', and 'genre_frequency'.
+        save_file (str): Path to save the plot image.
+        title (str): The title of the plot.
+        sort_by (str): The metric to sort the genres by.
+        top_n (int, optional): The number of top genres to display.
+    """
+    # Exclude global metrics and sort
+    df_metrics = df[~df["genre"].isin(["MACRO", "MICRO", "WEIGHTED"])].copy()  # type: ignore
+    df_metrics = df_metrics.sort_values(by=sort_by, ascending=False)  # ty: ignore
+
+    if top_n:
+        df_metrics = df_metrics.head(top_n)
+
+    df_metrics.set_index("genre", inplace=True)
+
+    metrics = ["precision", "recall", "f1"]
+    bar_width = 0.25
+    x = np.arange(len(df_metrics))
+
+    fig, ax = plt.subplots(figsize=(15, 8))
+
+    # Baseline bar spanning the entire group width
+    ax.bar(
+        x,
+        df_metrics["genre_frequency"],
+        width=bar_width * len(metrics),
+        color="gray",
+        alpha=0.8,
+        label="Genre Frequency",
+        align="center",
+        zorder=3,
+    )
+
+    # Plot grouped bars for precision, recall, f1
+    for i, metric in enumerate(metrics):
+        ax.bar(
+            x + (i - 1) * bar_width,
+            df_metrics[metric],
+            width=bar_width,
+            label=metric.capitalize(),
+            zorder=2,
+        )
+
+    # Aesthetics
+    plt.title(title, fontsize=16)
+    ax.set_ylabel("Score", fontsize=12)
+    ax.set_xlabel("Genre", fontsize=12)
+    ax.set_xticks(x)
+    ax.set_xticklabels(df_metrics.index, rotation=45, ha="right", fontsize=10)
+    ax.set_ylim(0, 1)
+    plt.yticks(fontsize=10)
+    ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+    plt.grid(axis="y", linestyle="--", alpha=0.7)
+
+    # Legend (unique labels only)
+    handles, labels = ax.get_legend_handles_labels()
+    unique = dict(zip(labels, handles))
+    ax.legend(unique.values(), unique.keys(), fontsize=12)
+
+    plt.tight_layout()
+    plt.savefig(save_file)
+    plt.close()
+    if verbose:
+        console.done(
+            f"Saved classification report plot to {Path(save_file).absolute()}"
+        )
 
 
 @with_status
