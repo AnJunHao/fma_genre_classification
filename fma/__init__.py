@@ -7,6 +7,7 @@ from fma.model.hgb import hgb_grid_search
 from fma.model.lr import lr_grid_search
 from fma.model.rf import rf_grid_search
 from fma.model.svm import svm_grid_search
+from fma.model.xgb import xgb_grid_search
 from fma.plain import console
 
 __all__ = [
@@ -23,6 +24,7 @@ __all__ = [
     "dt_grid_search",
     "rf_grid_search",
     "hgb_grid_search",
+    "xgb_grid_search",
     "get_best_model",
     "console",
 ]
